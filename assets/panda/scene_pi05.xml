@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<mujoco model="pi05_lab_scene">
+  <include file="panda.xml"/>
+
+  <option timestep="0.005" impratio="10"/>
+
+  <visual>
+    <global offwidth="640" offheight="480"/>
+    <quality shadowsize="2048"/>
+    <headlight diffuse="0.55 0.55 0.55" ambient="0.35 0.35 0.35" specular="0.05 0.05 0.05"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.30 0.33 0.37" rgb2="0.22 0.25 0.29"
+             width="300" height="300" mark="none"/>
+    <material name="gridmat" texture="grid" texrepeat="10 10" texuniform="true" reflectance="0.05"/>
+    <material name="cube_red" rgba="0.85 0.16 0.16 1"/>
+    <material name="bin_blue" rgba="0.10 0.38 0.85 1"/>
+    <material name="plate_yellow" rgba="0.95 0.80 0.12 1"/>
+    <material name="target_green" rgba="0.10 0.80 0.30 1"/>
+  </asset>
+
+  <worldbody>
+    <light name="sun" pos="0.6 0.2 2.5" dir="0 0 -1" directional="true" diffuse="0.6 0.6 0.6"/>
+    <light name="fill" pos="1.4 -0.8 1.4" diffuse="0.30 0.30 0.30" specular="0.05 0.05 0.05"/>
+
+    <geom name="floor" type="plane" size="3 3 0.05" material="gridmat" condim="3" friction="1.0 0.05 0.01"/>
+
+    <!-- target zones -->
+    <geom name="plate" type="cylinder" size="0.058 0.007" pos="0.5 -0.26 0.007" material="plate_yellow"
+          contype="1" conaffinity="1"/>
+    <geom name="push_target" type="cylinder" size="0.052 0.002" pos="0.68 0.0 0.002" material="target_green"
+          contype="0" conaffinity="0"/>
+
+    <!-- blue bin: 4 thin walls, open top -->
+    <geom name="bin_x0" type="box" size="0.005 0.085 0.035" pos="0.405 0.28 0.035" material="bin_blue"/>
+    <geom name="bin_x1" type="box" size="0.005 0.085 0.035" pos="0.595 0.28 0.035" material="bin_blue"/>
+    <geom name="bin_y0" type="box" size="0.095 0.005 0.035" pos="0.5 0.195 0.035" material="bin_blue"/>
+    <geom name="bin_y1" type="box" size="0.095 0.005 0.035" pos="0.5 0.365 0.035" material="bin_blue"/>
+
+    <body name="cube" pos="0.5 0.02 0.030">
+      <freejoint name="cube_free"/>
+      <geom name="cube_geom" type="box" size="0.024 0.024 0.024" material="cube_red"
+            mass="0.06" condim="4" friction="2.5 0.10 0.01" solimp="0.98 0.995 0.001"
+            solref="0.008 1"/>
+    </body>
+  </worldbody>
+</mujoco>

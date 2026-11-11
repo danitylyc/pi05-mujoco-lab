@@ -1,0 +1,13 @@
+# 大数据与模型权重不入库（体积太大，可按 README 重新生成）
+data/*.npz
+data/*.npy
+checkpoints/*.pt
+outputs/*.log
+outputs/*.txt
+outputs/render_probe.png
+outputs/probe_*.png
+
+# 临时
+*.pyc
+__pycache__/
+.venv/
