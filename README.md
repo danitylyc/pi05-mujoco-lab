@@ -16,9 +16,10 @@ Panda + 3 目标      8 阶段 / DLS IK      条件流匹配 BC       20 seeds /
 
 | 轨道 | 状态 | 结果 |
 |---|---|---|
-| 自建环境 · v2 | ✅ 完成 | 闭环 **46.7%**（bin 15 / plate 60 / marker 65） |
-| 自建环境 · v3 | 🔄 训练中 | stride-4 + 空间 soft-argmax 视觉，10 epoch |
-| 主流 benchmark · Fetch | 🟡 已训待评 | 专家 100%（20/20），mini-VLA 10 epoch / loss 0.145 |
+| 自建环境 · v1 | ✅ 完成 | 闭环 **28.3%**（bin 25 / plate 45 / marker 15） |
+| 自建环境 · v2 | ✅ 完成 | 离线 2–5 mrad，闭环 **0%**（视觉 stride=16 把 5px 方块抹平，见下节） |
+| 自建环境 · v3 | ✅ 完成 | 闭环 **25.0%**（bin 25 / plate 30 / marker 20），接近精度 0.1–1.2cm |
+| 主流 benchmark · FetchPickAndPlace-v4 | ✅ 完成 | 脚本专家 **100%**（20/20），mini-VLA **1/20 = 5%** |
 
 ---
 
@@ -82,6 +83,11 @@ v2 出现过最反直觉的一幕：**离线拟合精确到 2–5 mrad，闭环�
 **在 stride-4 的 28×28 特征图上做空间 soft-argmax**：对每个通道沿空间 softmax 求期望 (x, y)，
 压成 1 个关键点 token。**定位精度来自 28×28 网格（单格 3.7 cm），注意力成本几乎不变**（2.6 ms/样本）。
 
+改完之后接近精度到了 **0.1–1.2 cm**，但闭环只到 25%：崩点从"看不见"转移到了"闭合时机"——
+逐 seed 追踪（`outputs/diag_fail.txt`）显示成功样本闭合时距方块 1.1–2.2 cm，
+失败样本有时离 3–4 cm 就闭合，夹空之后把方块扫飞（最终距离 15–40 cm）。
+300 条示教的时序几乎一致，模型学到的是"平均日程"而非"盯着方块决定何时动手"。
+
 ---
 
 ## 快速开始
@@ -105,7 +111,7 @@ cd src
 & $py bench_fetch.py                 # 接口 / 渲染 / 推理耗时验证
 & $py fetch_demos.py                 # 脚本专家：20/20 = 100%，65 ms/episode
 & $py fetch_pipeline.py              # 采示教 → 训练 mini-VLA（2.08M 参数，10 epoch / loss 0.145）
-& $py fetch_eval.py                  # 闭环评测（已写好，待跑）
+& $py fetch_eval.py                  # 闭环评测：1/20 = 5%（近程精度够、长程误差累积）
 ```
 
 ---
