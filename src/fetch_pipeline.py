@@ -85,7 +85,9 @@ class FetchDS(Dataset):
         for s, L in zip(ep_start, ep_len):
             for t in range(L - CHUNK):
                 self.idx.append((s + t, s, t, L))
-        self.state_norm = Normalizer(states.mean(0), states.std(0) + 1e-6)
+        self.state_norm = Normalizer(
+            np.concatenate([np.tile(states.mean(0), HIST), [0.5]]),
+            np.concatenate([np.tile(states.std(0) + 1e-6, HIST), [0.3]]))
         self.act_norm = Normalizer(acts.mean(0), acts.std(0) + 1e-6)
 
     def __len__(self):
