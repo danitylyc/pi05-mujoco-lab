@@ -85,19 +85,27 @@ class MiniVLA(nn.Module):
         super().__init__()
         self.chunk, self.act_dim = chunk, act_dim
 
-        # 关键：总 stride 只做到 4。方块在 112px 图上只有 ~5px，stride 16 会把位置信息抹平，
-        # 策略就退化成"复现平均轨迹"、抓空。stride 4 -> 28x28 网格，单格约 3.7cm。
+        # 关键：卷积主干总 stride 只做到 4（112 -> 28x28），再分两支：
+        #   ① 上下文支：池化到 5x5 的 patch token（成本与 v2 相同）
+        #   ② 关键点支：对 28x28 特征图做空间 soft-argmax，直接读出每个通道的
+        #      期望 (x,y) 坐标 —— 这是让模型能精确定位 5px 小方块的关键，
+        #      而且几乎不增加注意力成本。stride=16 时方块位置会被下采样抹平，
+        #      策略退化成"复现平均轨迹"，抓空。
         self.vision = nn.Sequential(
             nn.Conv2d(3, 32, 3, 2, 1), nn.GroupNorm(8, 32), nn.SiLU(),
             nn.Conv2d(32, 64, 3, 2, 1), nn.GroupNorm(8, 64), nn.SiLU(),
             nn.Conv2d(64, 96, 3, 1, 1), nn.GroupNorm(8, 96), nn.SiLU(),
             nn.Conv2d(96, 96, 3, 1, 1), nn.GroupNorm(8, 96), nn.SiLU(),
         )
-        patches = self._patch_grid(img)
-        self.n_patch = patches * patches
+        self.grid = img // 4
+        self.n_patch = 5 * 5
+        self.pool = nn.AdaptiveAvgPool2d(5)
         self.patch_proj = nn.Conv2d(96, d, 1)
         self.patch_pos = nn.Parameter(torch.zeros(self.n_patch, d))
         self.cam_emb = nn.Parameter(torch.zeros(n_cam, d))
+        self.key_mlp = nn.Sequential(nn.Linear(192, d), nn.SiLU(), nn.Linear(d, d))
+        self.key_emb = nn.Parameter(torch.zeros(n_cam, d))
+        self.temp = 1.0
 
         self.txt_emb = nn.Embedding(vocab_size, d, padding_idx=0)
         self.state_mlp = nn.Sequential(nn.Linear(state_dim, d), nn.SiLU(), nn.Linear(d, d))
@@ -121,10 +129,26 @@ class MiniVLA(nn.Module):
 
     def encode(self, images, state, txt_ids):
         B, N, C, H, W = images.shape
-        f = self.vision(images.reshape(B * N, C, H, W))                 # (B*N,96,h,w)
-        f = self.patch_proj(f).flatten(2).transpose(1, 2)                # (B*N,P,d)
-        f = f + self.patch_pos[None] + self.cam_emb.repeat_interleave(B, 0)[:, None]
-        img_tok = f.reshape(B, N * self.n_patch, -1)
+        f = self.vision(images.reshape(B * N, C, H, W))                  # (B*N,96,G,G)
+
+        # ① 上下文 patch
+        p = self.pool(f)                                                # (B*N,96,5,5)
+        p = self.patch_proj(p).flatten(2).transpose(1, 2)                # (B*N,25,d)
+        p = p + self.patch_pos[None]
+
+        # ② 空间 soft-argmax 关键点坐标
+        G = f.shape[-1]
+        w = torch.softmax(f.flatten(2).float() * self.temp, dim=2)       # (B*N,96,G*G)
+        axis = torch.linspace(-1, 1, G, device=f.device)
+        gx = axis[None, :].repeat(G, 1).reshape(-1)
+        gy = axis[:, None].repeat(1, G).reshape(-1)
+        kx = (w * gx).sum(-1)
+        ky = (w * gy).sum(-1)
+        key = self.key_mlp(torch.cat([kx, ky], -1))[:, None, :]          # (B*N,1,d)
+
+        tok = torch.cat([p, key + self.key_emb.repeat_interleave(B, 0)[:, None]], 1)
+        tok = tok + self.cam_emb.repeat_interleave(B, 0)[:, None]
+        img_tok = tok.reshape(B, N * (self.n_patch + 1), -1)
 
         txt_tok = self.txt_emb(txt_ids)
         st_tok = self.state_mlp(state)[:, None, :]
